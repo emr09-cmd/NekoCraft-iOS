@@ -18,6 +18,7 @@
 		A00000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000012 /* NekoCraftRuntimeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NekoCraftRuntimeBridge.swift; sourceTree = "<group>"; };
 		A00000000000000000000013 /* NekoCraftJavaRuntime.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NekoCraftJavaRuntime.c; sourceTree = "<group>"; };
+		A00000000000000000000014 /* NekoCraft-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NekoCraft-Bridging-Header.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -27,6 +28,22 @@
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000043 /* Package Java runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Runtime/src/depends/java-21-openjdk/lib/server/libjvm.dylib",
+			);
+			name = "Package Java runtime";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(WRAPPER_NAME)/JavaRuntime/lib/server/libjvm.dylib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ ! -f \"${SRCROOT}/Runtime/src/depends/java-21-openjdk/lib/server/libjvm.dylib\" ]; then echo \"Missing ARM64 Java 21 runtime. Run make -C Runtime ios-jre21 first.\" >&2; exit 1; fi\n${SRCROOT}/Runtime/ios/package-runtime.sh \"${SRCROOT}/Runtime/src/depends/java-21-openjdk\" \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" \"${CODE_SIGN_IDENTITY}\"";
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -45,6 +62,7 @@
 			children = (
 				A00000000000000000000010 /* NekoCraftApp.swift */,
 				A00000000000000000000011 /* Info.plist */,
+				A00000000000000000000014 /* NekoCraft-Bridging-Header.h */,
 			);
 			path = NekoCraftApp;
 			sourceTree = "<group>";
@@ -76,6 +94,7 @@
 				A00000000000000000000020 /* Frameworks */,
 				A00000000000000000000041 /* Sources */,
 				A00000000000000000000042 /* Resources */,
+				A00000000000000000000043 /* Package Java runtime */,
 			);
 			buildRules = (
 			);
@@ -160,6 +179,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.emr09.NekoCraft;
 				PRODUCT_NAME = NekoCraft;
 				SWIFT_VERSION = 5.0;
+				SWIFT_OBJC_BRIDGING_HEADER = NekoCraftApp/NekoCraft-Bridging-Header.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -183,6 +203,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.emr09.NekoCraft;
 				PRODUCT_NAME = NekoCraft;
 				SWIFT_VERSION = 5.0;
+				SWIFT_OBJC_BRIDGING_HEADER = NekoCraftApp/NekoCraft-Bridging-Header.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

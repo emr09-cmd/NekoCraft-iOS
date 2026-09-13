@@ -121,6 +121,7 @@ final class LauncherViewModel: ObservableObject {
     let version = "1.21.11"
     private static let usernameKey = "offlineUsername"
     private let libraryStore = LibraryStore()
+    private var javaRuntime: OpaquePointer?
 
     init() {
         username = UserDefaults.standard.string(forKey: Self.usernameKey) ?? "Dev"
@@ -137,10 +138,28 @@ final class LauncherViewModel: ObservableObject {
             let downloaded = try await libraryStore.download(manifest.libraries)
             libraryCount = downloaded
             isPrepared = true
-            message = "Downloaded \(downloaded) Java libraries. iOS still needs a Java runtime bridge before the game can launch."
+            message = try startJavaRuntime(downloadedLibraries: downloaded)
         } catch {
             message = error.localizedDescription
         }
+    }
+
+    private func startJavaRuntime(downloadedLibraries: Int) throws -> String {
+        guard let runtimeHome = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil) else {
+            throw LauncherError.runtimeNotBundled
+        }
+
+        javaRuntime = NekoCraftJavaRuntimeCreate(runtimeHome.path)
+        guard let javaRuntime else {
+            throw LauncherError.runtimeUnavailable
+        }
+
+        let result = NekoCraftJavaRuntimeStart(javaRuntime, 0, nil)
+        guard result == 0 else {
+            throw LauncherError.runtimeStartFailed(result)
+        }
+
+        return "Downloaded \(downloadedLibraries) Java libraries. Java 21 runtime started."
     }
 }
 
@@ -224,12 +243,21 @@ private struct Artifact: Decodable {
 
 private enum LauncherError: LocalizedError {
     case networkFailure
+    case runtimeNotBundled
+    case runtimeUnavailable
+    case runtimeStartFailed(Int32)
     case versionUnavailable(String)
 
     var errorDescription: String? {
         switch self {
         case .networkFailure:
             return "The Mojang download service did not respond. Check your connection and try again."
+        case .runtimeNotBundled:
+            return "Java 21 is not bundled in this build. Run the iOS runtime packaging step before launching."
+        case .runtimeUnavailable:
+            return "The bundled Java 21 runtime could not be opened."
+        case .runtimeStartFailed(let code):
+            return "Java 21 failed to start (code \(code)). JIT or runtime signing may be unavailable."
         case .versionUnavailable(let version):
             return "Minecraft \(version) is not currently listed by Mojang."
         }

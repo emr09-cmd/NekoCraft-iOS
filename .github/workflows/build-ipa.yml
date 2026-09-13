@@ -14,6 +14,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Download ARM64 iOS Java 21 runtime
+        run: make -C Runtime ios-jre21
+
       - name: Archive app
         run: |
           xcodebuild archive \
