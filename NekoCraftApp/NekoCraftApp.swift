@@ -201,11 +201,6 @@ final class LauncherViewModel: ObservableObject {
             message = "The Minecraft client is not downloaded yet. Press Prepare 1.21.11 first."
             return
         }
-        if javaRuntime != nil {
-            log("Launch blocked: Java VM already running")
-            message = "Java 21 VM is already running. Check the device console for launch logs."
-            return
-        }
         if isLaunching {
             log("Launch blocked: launch already in progress")
             message = "Minecraft launch is already in progress."

@@ -31,6 +31,7 @@ typedef struct {
 } JavaVMInitArgs;
 
 typedef jint (*JNI_CreateJavaVMFunction)(JavaVM **, void **, void *);
+typedef jint (*JNI_AttachCurrentThreadFunction)(JavaVM *, void **, void *);
 
 struct NekoCraftJavaRuntime {
     char *runtimeHome;
@@ -119,7 +120,17 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
         fprintf(stderr, "[NekoCraft Java] VM started successfully\n");
     }
 
-    void **jni = *(void ***)environment;
+    // JNIEnv is thread-local; attach every Swift launch task before JNI calls.
+    void **vmTable = *(void ***)runtime->jvm;
+    JNI_AttachCurrentThreadFunction attachCurrentThread = (JNI_AttachCurrentThreadFunction)vmTable[4];
+    void *attachedEnvironment = NULL;
+    if (attachCurrentThread(runtime->jvm, &attachedEnvironment, NULL) != 0 || attachedEnvironment == NULL) {
+        return runtimeError(runtime, "AttachCurrentThread failed");
+    }
+    environment = attachedEnvironment;
+
+    // JNIEnv is already a pointer to the native function table in C.
+    void **jni = (void **)environment;
     jclass (*findClass)(void *, const char *) = (jclass (*)(void *, const char *))jni[6];
     jmethodID (*getStaticMethodID)(void *, jclass, const char *, const char *) = (jmethodID (*)(void *, jclass, const char *, const char *))jni[113];
     jstring (*newStringUTF)(void *, const char *) = (jstring (*)(void *, const char *))jni[167];
