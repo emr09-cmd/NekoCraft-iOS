@@ -142,6 +142,7 @@ final class LauncherViewModel: ObservableObject {
     @Published private(set) var libraryCount = 0
     @Published private(set) var message: String?
     @Published private(set) var logs: [String]
+    @Published private(set) var isLaunching = false
 
     let version = "1.21.11"
     private static let usernameKey = "offlineUsername"
@@ -205,6 +206,11 @@ final class LauncherViewModel: ObservableObject {
             message = "Java 21 VM is already running. Check the device console for launch logs."
             return
         }
+        if isLaunching {
+            log("Launch blocked: launch already in progress")
+            message = "Minecraft launch is already in progress."
+            return
+        }
         guard let runtimeHome = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil) else {
             log("Launch failed: JavaRuntime folder missing")
             message = "Java runtime is missing from this app build."
@@ -221,26 +227,39 @@ final class LauncherViewModel: ObservableObject {
         }
         let gameDirectory = clientStore.gameDirectory.path
         let assetsDirectory = clientStore.assetsDirectory.path
-        let result = classPath.withCString { classPathPointer in
-            username.withCString { usernamePointer in
-                version.withCString { versionPointer in
-                    gameDirectory.withCString { gameDirectoryPointer in
-                        assetsDirectory.withCString { assetsDirectoryPointer in
-                            assetIndex.withCString { assetIndexPointer in
-                                NekoCraftJavaRuntimeLaunchMinecraft(javaRuntime, classPathPointer, usernamePointer, versionPointer, gameDirectoryPointer, assetsDirectoryPointer, assetIndexPointer)
+        isLaunching = true
+        log("Starting Java 21 and Minecraft on background thread")
+        let launchUsername = username
+        let launchVersion = version
+        let launchGameDirectory = gameDirectory
+        let launchAssetsDirectory = assetsDirectory
+        let launchAssetIndex = assetIndex
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let result = classPath.withCString { classPathPointer in
+                launchUsername.withCString { usernamePointer in
+                    launchVersion.withCString { versionPointer in
+                        launchGameDirectory.withCString { gameDirectoryPointer in
+                            launchAssetsDirectory.withCString { assetsDirectoryPointer in
+                                launchAssetIndex.withCString { assetIndexPointer in
+                                    NekoCraftJavaRuntimeLaunchMinecraft(javaRuntime, classPathPointer, usernamePointer, versionPointer, gameDirectoryPointer, assetsDirectoryPointer, assetIndexPointer)
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        if result == 0 {
-            log("Java 21 VM started in-process")
-            message = "Java 21 VM started in-process. Check the device console for launch logs."
-        } else {
-            let detail = NekoCraftJavaRuntimeLastError(javaRuntime).map { String(cString: $0) } ?? "unknown error"
-            log("Java VM failed: code \(result), \(detail)")
-            message = "Java VM launch failed (code \(result)): \(detail)"
+            let detail = result == 0 ? nil : (NekoCraftJavaRuntimeLastError(javaRuntime).map { String(cString: $0) } ?? "unknown error")
+            await MainActor.run {
+                guard let self else { return }
+                self.isLaunching = false
+                if result == 0 {
+                    self.log("Java 21 VM started and Minecraft Main.main returned")
+                    self.message = "Minecraft launch returned. Check the console for Java output."
+                } else {
+                    self.log("Java VM failed: code \(result), \(detail ?? "unknown error")")
+                    self.message = "Minecraft launch failed (code \(result)): \(detail ?? "unknown error")"
+                }
+            }
         }
     }
 
