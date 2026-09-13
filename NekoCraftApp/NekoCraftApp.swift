@@ -177,6 +177,10 @@ final class LauncherViewModel: ObservableObject {
             message = "The Minecraft client is not downloaded yet. Press Prepare 1.21.11 first."
             return
         }
+        if javaRuntime != nil {
+            message = "Java 21 VM is already running. Check the device console for launch logs."
+            return
+        }
         guard let runtimeHome = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil) else {
             message = "Java runtime is missing from this app build."
             return
@@ -204,7 +208,12 @@ final class LauncherViewModel: ObservableObject {
                 }
             }
         }
-        message = result == 0 ? "Java 21 VM started in-process. Minecraft client launch is now handed to the iOS Java bridge." : "Java VM launch failed (code \(result)). Check the signed runtime and active JIT."
+        if result == 0 {
+            message = "Java 21 VM started in-process. Check the device console for launch logs."
+        } else {
+            let detail = NekoCraftJavaRuntimeLastError(javaRuntime).map { String(cString: $0) } ?? "unknown error"
+            message = "Java VM launch failed (code \(result)): \(detail)"
+        }
     }
 }
 
