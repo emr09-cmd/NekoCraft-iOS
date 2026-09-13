@@ -96,6 +96,19 @@ struct LauncherView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                    launcherCard(title: "Launch console", systemImage: "terminal") {
+                        ScrollView {
+                            Text(model.logs.joined(separator: "\n"))
+                                .font(.system(.caption, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxHeight: 180)
+                        Button("Clear console") {
+                            model.clearLogs()
+                        }
+                        .font(.caption)
+                    }
                 }
                 .padding(20)
             }
@@ -128,6 +141,7 @@ final class LauncherViewModel: ObservableObject {
     @Published private(set) var clientReady = false
     @Published private(set) var libraryCount = 0
     @Published private(set) var message: String?
+    @Published private(set) var logs: [String]
 
     let version = "1.21.11"
     private static let usernameKey = "offlineUsername"
@@ -140,10 +154,13 @@ final class LauncherViewModel: ObservableObject {
         username = UserDefaults.standard.string(forKey: Self.usernameKey) ?? "Dev"
         libraryCount = libraryStore.fileCount()
         clientReady = clientStore.exists(version: version)
+        logs = UserDefaults.standard.stringArray(forKey: "launchLogs") ?? ["NekoCraft console ready"]
     }
 
     func prepareOrLaunch() async {
+        log("Button pressed")
         if isPrepared {
+            log("Runtime already prepared; launching")
             launchGame()
             return
         }
@@ -153,35 +170,43 @@ final class LauncherViewModel: ObservableObject {
 
     private func prepareVersion() async {
         isPreparing = true
+        log("Fetching Mojang 1.21.11 manifest")
         message = nil
         defer { isPreparing = false }
 
         do {
             let manifest = try await MojangManifestClient().versionManifest(for: version)
             let downloaded = try await libraryStore.download(manifest.libraries)
+            log("Downloaded \(downloaded) library files")
             try await clientStore.download(manifest.downloads.client, version: version)
+            log("Minecraft client downloaded")
             assetIndex = manifest.assetIndex.id
             let assetCount = try await AssetStore().download(manifest.assetIndex)
+            log("Downloaded \(assetCount) asset objects")
             libraryCount = downloaded
             clientReady = true
             isPrepared = true
             isGameReady = false
             message = "Downloaded \(downloaded) Java libraries, the client, and \(assetCount) assets. Press Launch 1.21.11."
         } catch {
+            log("Prepare failed: \(error.localizedDescription)")
             message = error.localizedDescription
         }
     }
 
     private func launchGame() {
         guard clientReady else {
+            log("Launch blocked: client jar missing")
             message = "The Minecraft client is not downloaded yet. Press Prepare 1.21.11 first."
             return
         }
         if javaRuntime != nil {
+            log("Launch blocked: Java VM already running")
             message = "Java 21 VM is already running. Check the device console for launch logs."
             return
         }
         guard let runtimeHome = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil) else {
+            log("Launch failed: JavaRuntime folder missing")
             message = "Java runtime is missing from this app build."
             return
         }
@@ -190,6 +215,7 @@ final class LauncherViewModel: ObservableObject {
         let classPath = libraryStore.classPath(clientPath: clientPath, additionalDirectory: bundledLibraries)
         javaRuntime = runtimeHome.path.withCString { NekoCraftJavaRuntimeCreate($0) }
         guard let javaRuntime else {
+            log("Launch failed: native runtime handle unavailable")
             message = "Java runtime could not be created."
             return
         }
@@ -209,11 +235,31 @@ final class LauncherViewModel: ObservableObject {
             }
         }
         if result == 0 {
+            log("Java 21 VM started in-process")
             message = "Java 21 VM started in-process. Check the device console for launch logs."
         } else {
             let detail = NekoCraftJavaRuntimeLastError(javaRuntime).map { String(cString: $0) } ?? "unknown error"
+            log("Java VM failed: code \(result), \(detail)")
             message = "Java VM launch failed (code \(result)): \(detail)"
         }
+    }
+
+    func clearLogs() {
+        logs = ["Console cleared"]
+        persistLogs()
+    }
+
+    private func log(_ entry: String) {
+        let formatter = ISO8601DateFormatter()
+        logs.append("[\(formatter.string(from: Date()))] \(entry)")
+        if logs.count > 100 {
+            logs.removeFirst(logs.count - 100)
+        }
+        persistLogs()
+    }
+
+    private func persistLogs() {
+        UserDefaults.standard.set(logs, forKey: "launchLogs")
     }
 }
 
