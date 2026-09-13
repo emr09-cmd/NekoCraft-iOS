@@ -49,7 +49,7 @@ struct LauncherView: View {
                             Circle()
                                 .fill(model.isPrepared ? .green : .secondary)
                                 .frame(width: 8, height: 8)
-                            Text(model.isGameReady ? "Ready to launch" : model.isPrepared ? "Runtime ready" : "Not downloaded")
+                            Text(model.isGameReady ? "Ready to launch" : model.isPrepared ? "Libraries ready" : "Not downloaded")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -74,7 +74,7 @@ struct LauncherView: View {
                             } else {
                                 Image(systemName: model.isGameReady ? "play.fill" : model.isPrepared ? "arrow.right.circle.fill" : "arrow.down.circle.fill")
                             }
-                            Text(model.isPreparing ? "Preparing 1.21.11..." : model.isGameReady ? "Launch 1.21.11" : model.isPrepared ? "Launch 1.21.11" : "Prepare 1.21.11")
+                            Text(model.isPreparing ? "Preparing 1.21.11..." : model.isPrepared ? "Launch 1.21.11" : "Prepare 1.21.11")
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
@@ -122,7 +122,6 @@ final class LauncherViewModel: ObservableObject {
     let version = "1.21.11"
     private static let usernameKey = "offlineUsername"
     private let libraryStore = LibraryStore()
-    private var javaRuntime: OpaquePointer?
 
     init() {
         username = UserDefaults.standard.string(forKey: Self.usernameKey) ?? "Dev"
@@ -148,32 +147,14 @@ final class LauncherViewModel: ObservableObject {
             let downloaded = try await libraryStore.download(manifest.libraries)
             libraryCount = downloaded
             isPrepared = true
-            message = try startJavaRuntime(downloadedLibraries: downloaded)
+            message = "Downloaded \(downloaded) Java libraries. Runtime is ready; launch requires JIT-enabled sideloading."
         } catch {
             message = error.localizedDescription
         }
     }
 
-    private func startJavaRuntime(downloadedLibraries: Int) throws -> String {
-        guard let runtimeHome = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil) else {
-            throw LauncherError.runtimeNotBundled
-        }
-
-        javaRuntime = NekoCraftJavaRuntimeCreate(runtimeHome.path)
-        guard let javaRuntime else {
-            throw LauncherError.runtimeUnavailable
-        }
-
-        let result = NekoCraftJavaRuntimeStart(javaRuntime, 0, nil)
-        guard result == 0 else {
-            throw LauncherError.runtimeStartFailed(result)
-        }
-
-        return "Downloaded \(downloadedLibraries) Java libraries. Java 21 runtime started. Client download is still required before launch."
-    }
-
     private func launchGame() {
-        message = "Minecraft client jar is not downloaded yet. The runtime is ready, but there is no game client to launch."
+        message = "Minecraft launch is unavailable in this build. JIT-enabled sideloading and the client runtime are required."
     }
 }
 
