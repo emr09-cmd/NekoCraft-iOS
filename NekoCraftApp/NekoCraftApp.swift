@@ -49,7 +49,7 @@ struct LauncherView: View {
                             Circle()
                                 .fill(model.isPrepared ? .green : .secondary)
                                 .frame(width: 8, height: 8)
-                            Text(model.isPrepared ? "Libraries ready" : "Not downloaded")
+                            Text(model.isGameReady ? "Ready to launch" : model.isPrepared ? "Runtime ready" : "Not downloaded")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -66,15 +66,15 @@ struct LauncherView: View {
                             .foregroundStyle(.secondary)
                     }
                     Button {
-                        Task { await model.prepareVersion() }
+                        Task { await model.prepareOrLaunch() }
                     } label: {
                         HStack {
                             if model.isPreparing {
                                 ProgressView().tint(.white)
                             } else {
-                                Image(systemName: model.isPrepared ? "arrow.clockwise" : "arrow.down.circle.fill")
+                                Image(systemName: model.isGameReady ? "play.fill" : model.isPrepared ? "arrow.right.circle.fill" : "arrow.down.circle.fill")
                             }
-                            Text(model.isPreparing ? "Preparing 1.21.11..." : model.isPrepared ? "Refresh libraries" : "Prepare 1.21.11")
+                            Text(model.isPreparing ? "Preparing 1.21.11..." : model.isGameReady ? "Launch 1.21.11" : model.isPrepared ? "Launch 1.21.11" : "Prepare 1.21.11")
                                 .fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
@@ -115,6 +115,7 @@ final class LauncherViewModel: ObservableObject {
     }
     @Published private(set) var isPreparing = false
     @Published private(set) var isPrepared = false
+    @Published private(set) var isGameReady = false
     @Published private(set) var libraryCount = 0
     @Published private(set) var message: String?
 
@@ -128,7 +129,16 @@ final class LauncherViewModel: ObservableObject {
         libraryCount = libraryStore.fileCount()
     }
 
-    func prepareVersion() async {
+    func prepareOrLaunch() async {
+        if isPrepared {
+            launchGame()
+            return
+        }
+
+        await prepareVersion()
+    }
+
+    private func prepareVersion() async {
         isPreparing = true
         message = nil
         defer { isPreparing = false }
@@ -159,7 +169,11 @@ final class LauncherViewModel: ObservableObject {
             throw LauncherError.runtimeStartFailed(result)
         }
 
-        return "Downloaded \(downloadedLibraries) Java libraries. Java 21 runtime started."
+        return "Downloaded \(downloadedLibraries) Java libraries. Java 21 runtime started. Client download is still required before launch."
+    }
+
+    private func launchGame() {
+        message = "Minecraft client jar is not downloaded yet. The runtime is ready, but there is no game client to launch."
     }
 }
 

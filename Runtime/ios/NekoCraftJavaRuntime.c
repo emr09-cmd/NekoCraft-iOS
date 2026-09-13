@@ -58,8 +58,11 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
     (void)mainClass;
     (void)argc;
     (void)argv;
-    if (runtime == NULL || runtime->runtimeHome == NULL || runtime->jvm != NULL) {
+    if (runtime == NULL || runtime->runtimeHome == NULL) {
         return -1;
+    }
+    if (runtime->jvm != NULL) {
+        return 0;
     }
 
     size_t pathLength = strlen(runtime->runtimeHome) + strlen("/lib/server/libjvm.dylib") + 1;
