@@ -15,7 +15,7 @@ rm -rf "$destination"
 mkdir -p "$destination"
 cp -R "$runtime_directory"/* "$destination/"
 
-if [ -n "$signing_identity" ]; then
+if [ -n "$signing_identity" ] && [ "$signing_identity" != "-" ] && [ "${CODE_SIGNING_ALLOWED:-YES}" != "NO" ]; then
     find "$destination" -type f -print0 | while IFS= read -r -d '' file; do
         if file "$file" | grep -q 'Mach-O'; then
             codesign --force --sign "$signing_identity" --timestamp=none "$file"
