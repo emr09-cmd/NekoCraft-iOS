@@ -62,14 +62,15 @@ int NekoCraftJavaRuntimeLaunchMinecraft(NekoCraftJavaRuntime *runtime, const cha
         "--userType", "legacy",
         "--versionType", "release"
     };
-    int result = NekoCraftJavaRuntimeLaunch(runtime, "net.minecraft.client.main.Main", classPath, (int)(sizeof(arguments) / sizeof(arguments[0])), arguments);
-    if (result == 0) {
-        // The client entry point is disabled until the iOS-native renderer is fully
-        // initialized; invoking it currently aborts inside native LWJGL code.
-        fprintf(stderr, "[NekoCraft Java] VM ready; Minecraft Main invocation blocked to prevent native renderer crash\n");
-        return -2;
-    }
-    return result;
+    (void)arguments;
+    (void)classPath;
+    (void)username;
+    (void)version;
+    (void)gameDirectory;
+    (void)assetsDirectory;
+    (void)assetIndex;
+    fprintf(stderr, "[NekoCraft Java] Minecraft Main invocation disabled before JNI class loading; renderer is unstable\n");
+    return -2;
 }
 
 int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainClass, const char *classPath, int argc, const char *argv[]) {
@@ -101,6 +102,11 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
         runtime->environment = environment;
         fprintf(stderr, "[NekoCraft Java] VM started successfully\n");
     }
+
+    // Keep VM startup safe. Minecraft Main/LWJGL execution is intentionally
+    // not entered until the native renderer is replaced with a stable bridge.
+    fprintf(stderr, "[NekoCraft Java] VM ready; skipping Minecraft Main invocation\n");
+    return 0;
 
     // JNIEnv is thread-local; attach every Swift launch task before JNI calls.
     if ((*runtime->jvm)->AttachCurrentThread(runtime->jvm, &environment, NULL) != 0 || environment == NULL) {
