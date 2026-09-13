@@ -109,7 +109,7 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
     free(javaPath);
     if (result != 0) {
         runtime->processID = 0;
-        return -1;
+        return -result;
     }
     return 0;
 #if 0

@@ -204,7 +204,7 @@ final class LauncherViewModel: ObservableObject {
                 }
             }
         }
-        message = result == 0 ? "Minecraft 1.21.11 launch started." : "Minecraft launch failed (code \(result))."
+        message = result == 0 ? "Minecraft 1.21.11 launch started." : "Minecraft launch failed (posix_spawn error \(-result)). Check that JavaRuntime/bin/java is signed and JIT is active."
     }
 }
 

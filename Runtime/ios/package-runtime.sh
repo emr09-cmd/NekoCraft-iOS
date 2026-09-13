@@ -21,6 +21,17 @@ cp -R "$native_directory"/*.dylib "$app_bundle/Frameworks/"
 cp -R "$(dirname -- "$0")/../libs/caciocavallo"/*.jar "$destination/libs/"
 cp -R "$(dirname -- "$0")/../libs/lwjgl"/*.jar "$destination/libs/"
 
+# The upstream JRE uses @rpath for libjli/libjvm. Point the packaged binaries
+# at their sibling runtime directories before signing them.
+install_name_tool -add_rpath "@loader_path/../lib" "$destination/bin/java" 2>/dev/null || true
+for file in "$destination"/lib/*.dylib "$destination"/lib/server/*.dylib; do
+    if [ -f "$file" ]; then
+        install_name_tool -add_rpath "@loader_path" "$file" 2>/dev/null || true
+        install_name_tool -add_rpath "@loader_path/.." "$file" 2>/dev/null || true
+        install_name_tool -add_rpath "@loader_path/../../Frameworks" "$file" 2>/dev/null || true
+    fi
+done
+
 if [ -n "$signing_identity" ] && [ "$signing_identity" != "-" ] && [ "${CODE_SIGNING_ALLOWED:-YES}" != "NO" ]; then
     for file in "$app_bundle"/Frameworks/*.dylib; do
         codesign --force --sign "$signing_identity" --timestamp=none "$file"
