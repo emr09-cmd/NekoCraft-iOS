@@ -1,43 +1,18 @@
 #include "NekoCraftJavaRuntime.h"
+#include "jni.h"
 
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef int jint;
-typedef struct JavaVM JavaVM;
-typedef void *jobject;
-typedef jobject jclass;
-typedef jobject jstring;
-typedef jobject jobjectArray;
-typedef void *jmethodID;
-typedef int jsize;
-
-typedef union {
-    jobject l;
-} jvalue;
-
-typedef struct {
-    char *optionString;
-    void *extraInfo;
-} JavaVMOption;
-
-typedef struct {
-    jint version;
-    jint nOptions;
-    JavaVMOption *options;
-    jint ignoreUnrecognized;
-} JavaVMInitArgs;
-
-typedef jint (*JNI_CreateJavaVMFunction)(JavaVM **, void **, void *);
-typedef jint (*JNI_AttachCurrentThreadFunction)(JavaVM *, void **, void *);
+typedef jint (*JNI_CreateJavaVMFunction)(JavaVM **, JNIEnv **, void *);
 
 struct NekoCraftJavaRuntime {
     char *runtimeHome;
     void *jvmLibrary;
     JavaVM *jvm;
-    void *environment;
+    JNIEnv *environment;
     char lastError[512];
 };
 
@@ -94,7 +69,7 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
     if (runtime == NULL || runtime->runtimeHome == NULL || mainClass == NULL || classPath == NULL) {
         return runtimeError(runtime, "invalid runtime, main class, or classpath");
     }
-    void *environment = runtime->environment;
+    JNIEnv *environment = runtime->environment;
     if (runtime->jvm == NULL) {
         size_t pathLength = strlen(runtime->runtimeHome) + strlen("/lib/server/libjvm.dylib") + 1;
         char *jvmPath = malloc(pathLength);
@@ -121,41 +96,25 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
     }
 
     // JNIEnv is thread-local; attach every Swift launch task before JNI calls.
-    void **vmTable = *(void ***)runtime->jvm;
-    JNI_AttachCurrentThreadFunction attachCurrentThread = (JNI_AttachCurrentThreadFunction)vmTable[4];
-    void *attachedEnvironment = NULL;
-    if (attachCurrentThread(runtime->jvm, &attachedEnvironment, NULL) != 0 || attachedEnvironment == NULL) {
+    if ((*runtime->jvm)->AttachCurrentThread(runtime->jvm, &environment, NULL) != 0 || environment == NULL) {
         return runtimeError(runtime, "AttachCurrentThread failed");
     }
-    environment = attachedEnvironment;
-
-    // JNIEnv is already a pointer to the native function table in C.
-    void **jni = (void **)environment;
-    jclass (*findClass)(void *, const char *) = (jclass (*)(void *, const char *))jni[6];
-    jmethodID (*getStaticMethodID)(void *, jclass, const char *, const char *) = (jmethodID (*)(void *, jclass, const char *, const char *))jni[113];
-    jstring (*newStringUTF)(void *, const char *) = (jstring (*)(void *, const char *))jni[167];
-    jobjectArray (*newObjectArray)(void *, jsize, jclass, jobject) = (jobjectArray (*)(void *, jsize, jclass, jobject))jni[172];
-    void (*setObjectArrayElement)(void *, jobjectArray, jsize, jobject) = (void (*)(void *, jobjectArray, jsize, jobject))jni[174];
-    void (*callStaticVoidMethodA)(void *, jclass, jmethodID, const jvalue *) = (void (*)(void *, jclass, jmethodID, const jvalue *))jni[143];
-    jobject (*exceptionOccurred)(void *) = (jobject (*)(void *))jni[15];
-    void (*exceptionDescribe)(void *) = (void (*)(void *))jni[16];
-    void (*exceptionClear)(void *) = (void (*)(void *))jni[17];
-    jclass stringClass = findClass(environment, "java/lang/String");
-    jclass mainClassObject = findClass(environment, mainClass);
+    jclass stringClass = (*environment)->FindClass(environment, "java/lang/String");
+    jclass mainClassObject = (*environment)->FindClass(environment, mainClass);
     if (stringClass == NULL || mainClassObject == NULL) return runtimeError(runtime, "Minecraft main class or String class not found");
-    jmethodID mainMethod = getStaticMethodID(environment, mainClassObject, "main", "([Ljava/lang/String;)V");
+    jmethodID mainMethod = (*environment)->GetStaticMethodID(environment, mainClassObject, "main", "([Ljava/lang/String;)V");
     if (mainMethod == NULL) return runtimeError(runtime, "Minecraft main method not found");
-    jobjectArray javaArguments = newObjectArray(environment, argc, stringClass, NULL);
+    jobjectArray javaArguments = (*environment)->NewObjectArray(environment, argc, stringClass, NULL);
     if (javaArguments == NULL) return runtimeError(runtime, "could not allocate Minecraft arguments");
     for (int index = 0; index < argc; index++) {
-        setObjectArrayElement(environment, javaArguments, index, newStringUTF(environment, argv[index]));
+        (*environment)->SetObjectArrayElement(environment, javaArguments, index, (*environment)->NewStringUTF(environment, argv[index]));
     }
     jvalue mainValue = { .l = javaArguments };
     fprintf(stderr, "[NekoCraft Java] invoking %s.main with %d arguments\n", mainClass, argc);
-    callStaticVoidMethodA(environment, mainClassObject, mainMethod, &mainValue);
-    if (exceptionOccurred(environment) != NULL) {
-        exceptionDescribe(environment);
-        exceptionClear(environment);
+    (*environment)->CallStaticVoidMethodA(environment, mainClassObject, mainMethod, &mainValue);
+    if ((*environment)->ExceptionOccurred(environment) != NULL) {
+        (*environment)->ExceptionDescribe(environment);
+        (*environment)->ExceptionClear(environment);
         return runtimeError(runtime, "Minecraft main threw a Java exception; see console");
     }
     fprintf(stderr, "[NekoCraft Java] Minecraft main returned\n");
