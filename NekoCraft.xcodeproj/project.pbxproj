@@ -19,6 +19,7 @@
 		A00000000000000000000012 /* NekoCraftRuntimeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NekoCraftRuntimeBridge.swift; sourceTree = "<group>"; };
 		A00000000000000000000013 /* NekoCraftJavaRuntime.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NekoCraftJavaRuntime.c; sourceTree = "<group>"; };
 		A00000000000000000000014 /* NekoCraft-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NekoCraft-Bridging-Header.h; sourceTree = "<group>"; };
+		A00000000000000000000015 /* NekoCraft.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NekoCraft.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +64,7 @@
 				A00000000000000000000010 /* NekoCraftApp.swift */,
 				A00000000000000000000011 /* Info.plist */,
 				A00000000000000000000014 /* NekoCraft-Bridging-Header.h */,
+				A00000000000000000000015 /* NekoCraft.entitlements */,
 			);
 			path = NekoCraftApp;
 			sourceTree = "<group>";
@@ -180,6 +182,7 @@
 				PRODUCT_NAME = NekoCraft;
 				SWIFT_VERSION = 5.0;
 				SWIFT_OBJC_BRIDGING_HEADER = NekoCraftApp/NekoCraft-Bridging-Header.h;
+				CODE_SIGN_ENTITLEMENTS = NekoCraftApp/NekoCraft.entitlements;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -204,6 +207,7 @@
 				PRODUCT_NAME = NekoCraft;
 				SWIFT_VERSION = 5.0;
 				SWIFT_OBJC_BRIDGING_HEADER = NekoCraftApp/NekoCraft-Bridging-Header.h;
+				CODE_SIGN_ENTITLEMENTS = NekoCraftApp/NekoCraft.entitlements;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

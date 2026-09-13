@@ -15,7 +15,16 @@ rm -rf "$destination"
 mkdir -p "$destination"
 cp -R "$runtime_directory"/* "$destination/"
 
+native_directory=$(CDPATH= cd -- "$(dirname -- "$0")/native" && pwd)
+mkdir -p "$app_bundle/Frameworks" "$destination/libs"
+cp -R "$native_directory"/*.dylib "$app_bundle/Frameworks/"
+cp -R "$(dirname -- "$0")/../libs/caciocavallo"/*.jar "$destination/libs/"
+cp -R "$(dirname -- "$0")/../libs/lwjgl"/*.jar "$destination/libs/"
+
 if [ -n "$signing_identity" ] && [ "$signing_identity" != "-" ] && [ "${CODE_SIGNING_ALLOWED:-YES}" != "NO" ]; then
+    for file in "$app_bundle"/Frameworks/*.dylib; do
+        codesign --force --sign "$signing_identity" --timestamp=none "$file"
+    done
     find "$destination" -type f -print0 | while IFS= read -r -d '' file; do
         if file "$file" | grep -q 'Mach-O'; then
             codesign --force --sign "$signing_identity" --timestamp=none "$file"

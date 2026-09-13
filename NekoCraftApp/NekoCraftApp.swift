@@ -16,6 +16,9 @@ struct LauncherView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    NekoCraftMetalView()
+                        .frame(height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Minecraft Java launcher")
                             .font(.largeTitle.bold())
@@ -60,6 +63,12 @@ struct LauncherView: View {
                             Spacer()
                             Text(model.libraryCount == 0 ? "None" : "\(model.libraryCount) files")
                                 .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Minecraft client")
+                            Spacer()
+                            Text(model.clientReady ? "Ready" : "Not downloaded")
+                                .foregroundStyle(model.clientReady ? .green : .secondary)
                         }
                         Text("Libraries are fetched on demand and kept out of the app bundle.")
                             .font(.caption)
@@ -116,16 +125,21 @@ final class LauncherViewModel: ObservableObject {
     @Published private(set) var isPreparing = false
     @Published private(set) var isPrepared = false
     @Published private(set) var isGameReady = false
+    @Published private(set) var clientReady = false
     @Published private(set) var libraryCount = 0
     @Published private(set) var message: String?
 
     let version = "1.21.11"
     private static let usernameKey = "offlineUsername"
     private let libraryStore = LibraryStore()
+    private let clientStore = ClientStore()
+    private var assetIndex = ""
+    private var javaRuntime: OpaquePointer?
 
     init() {
         username = UserDefaults.standard.string(forKey: Self.usernameKey) ?? "Dev"
         libraryCount = libraryStore.fileCount()
+        clientReady = clientStore.exists(version: version)
     }
 
     func prepareOrLaunch() async {
@@ -145,16 +159,90 @@ final class LauncherViewModel: ObservableObject {
         do {
             let manifest = try await MojangManifestClient().versionManifest(for: version)
             let downloaded = try await libraryStore.download(manifest.libraries)
+            try await clientStore.download(manifest.downloads.client, version: version)
+            assetIndex = manifest.assetIndex.id
+            let assetCount = try await AssetStore().download(manifest.assetIndex)
             libraryCount = downloaded
+            clientReady = true
             isPrepared = true
-            message = "Downloaded \(downloaded) Java libraries. Runtime is ready; launch requires JIT-enabled sideloading."
+            isGameReady = false
+            message = "Downloaded \(downloaded) Java libraries, the client, and \(assetCount) assets. Press Launch 1.21.11."
         } catch {
             message = error.localizedDescription
         }
     }
 
     private func launchGame() {
-        message = "Minecraft launch is unavailable in this build. JIT-enabled sideloading and the client runtime are required."
+        guard clientReady else {
+            message = "The Minecraft client is not downloaded yet. Press Prepare 1.21.11 first."
+            return
+        }
+        guard let runtimeHome = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil) else {
+            message = "Java runtime is missing from this app build."
+            return
+        }
+        let clientPath = clientStore.path(version: version)
+        let bundledLibraries = Bundle.main.url(forResource: "JavaRuntime", withExtension: nil)?.appendingPathComponent("libs", isDirectory: true)
+        let classPath = libraryStore.classPath(clientPath: clientPath, additionalDirectory: bundledLibraries)
+        javaRuntime = runtimeHome.path.withCString { NekoCraftJavaRuntimeCreate($0) }
+        guard let javaRuntime else {
+            message = "Java runtime could not be created."
+            return
+        }
+        let gameDirectory = clientStore.gameDirectory.path
+        let assetsDirectory = clientStore.assetsDirectory.path
+        let result = classPath.withCString { classPathPointer in
+            username.withCString { usernamePointer in
+                version.withCString { versionPointer in
+                    gameDirectory.withCString { gameDirectoryPointer in
+                        assetsDirectory.withCString { assetsDirectoryPointer in
+                            assetIndex.withCString { assetIndexPointer in
+                                NekoCraftJavaRuntimeLaunchMinecraft(javaRuntime, classPathPointer, usernamePointer, versionPointer, gameDirectoryPointer, assetsDirectoryPointer, assetIndexPointer)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        message = result == 0 ? "Minecraft 1.21.11 launch started." : "Minecraft launch failed (code \(result))."
+    }
+}
+
+private final class AssetStore {
+    private let fileManager = FileManager.default
+
+    private var directory: URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("NekoCraft/Assets/objects", isDirectory: true)
+    }
+
+    func download(_ index: AssetIndex) async throws -> Int {
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let (data, response) = try await URLSession.shared.data(from: index.url)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            throw LauncherError.networkFailure
+        }
+        let assetIndex = try JSONDecoder().decode(AssetIndexData.self, from: data)
+        var downloaded = 0
+        for asset in assetIndex.objects.values {
+            let prefix = String(asset.hash.prefix(2))
+            let destination = directory.appendingPathComponent("\(prefix)/\(asset.hash)")
+            if fileManager.fileExists(atPath: destination.path) {
+                downloaded += 1
+                continue
+            }
+            try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            guard let url = URL(string: "https://resources.download.minecraft.net/\(prefix)/\(asset.hash)") else {
+                throw LauncherError.networkFailure
+            }
+            let (temporaryURL, assetResponse) = try await URLSession.shared.download(from: url)
+            guard let assetHTTP = assetResponse as? HTTPURLResponse, 200..<300 ~= assetHTTP.statusCode else {
+                throw LauncherError.networkFailure
+            }
+            try fileManager.moveItem(at: temporaryURL, to: destination)
+            downloaded += 1
+        }
+        return downloaded
     }
 }
 
@@ -192,6 +280,15 @@ private final class LibraryStore {
         (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).count) ?? 0
     }
 
+    func classPath(clientPath: URL, additionalDirectory: URL? = nil) -> String {
+        let files = (fileManager.enumerator(at: directory, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? [])
+            .filter { $0.pathExtension == "jar" }
+        let bundledFiles = additionalDirectory.flatMap {
+            (fileManager.enumerator(at: $0, includingPropertiesForKeys: nil)?.allObjects as? [URL])
+        }?.filter { $0.pathExtension == "jar" } ?? []
+        return ([clientPath] + files + bundledFiles).map(\.path).joined(separator: ":")
+    }
+
     func download(_ libraries: [Library]) async throws -> Int {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         for library in libraries {
@@ -210,6 +307,49 @@ private final class LibraryStore {
     }
 }
 
+private final class ClientStore {
+    private let fileManager = FileManager.default
+
+    private var directory: URL {
+        let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("NekoCraft/Versions", isDirectory: true)
+    }
+
+    var gameDirectory: URL {
+        directory.deletingLastPathComponent().appendingPathComponent("Game", isDirectory: true)
+    }
+
+    var assetsDirectory: URL {
+        directory.deletingLastPathComponent().appendingPathComponent("Assets", isDirectory: true)
+    }
+
+    func path(version: String) -> URL {
+        clientURL(version: version)
+    }
+
+    func exists(version: String) -> Bool {
+        fileManager.fileExists(atPath: clientURL(version: version).path)
+    }
+
+    func download(_ artifact: Artifact, version: String) async throws {
+        guard let url = URL(string: artifact.url) else {
+            throw LauncherError.networkFailure
+        }
+        let destination = clientURL(version: version)
+        if fileManager.fileExists(atPath: destination.path) { return }
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let (temporaryURL, response) = try await URLSession.shared.download(from: url)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            throw LauncherError.networkFailure
+        }
+        try fileManager.moveItem(at: temporaryURL, to: destination)
+    }
+
+    private func clientURL(version: String) -> URL {
+        directory.appendingPathComponent("Minecraft-\(version).jar")
+    }
+}
+
 private struct VersionIndex: Decodable {
     let versions: [VersionReference]
 }
@@ -221,6 +361,25 @@ private struct VersionReference: Decodable {
 
 private struct VersionManifest: Decodable {
     let libraries: [Library]
+    let downloads: VersionDownloads
+    let assetIndex: AssetIndex
+}
+
+private struct VersionDownloads: Decodable {
+    let client: Artifact
+}
+
+private struct AssetIndex: Decodable {
+    let id: String
+    let url: URL
+}
+
+private struct AssetIndexData: Decodable {
+    let objects: [String: AssetObject]
+}
+
+private struct AssetObject: Decodable {
+    let hash: String
 }
 
 private struct Library: Decodable {

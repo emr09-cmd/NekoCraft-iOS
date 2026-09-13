@@ -1,4 +1,27 @@
 import MetalKit
+import SwiftUI
+
+public struct NekoCraftMetalView: UIViewRepresentable {
+    public final class Coordinator {
+        var bridge: NekoCraftRuntimeBridge?
+    }
+
+    public init() {
+    }
+
+    public func makeUIView(context: Context) -> MTKView {
+        let view = MTKView()
+        context.coordinator.bridge = NekoCraftRuntimeBridge(view: view)
+        return view
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    public func updateUIView(_ view: MTKView, context: Context) {
+    }
+}
 
 public final class NekoCraftRuntimeBridge: NSObject, MTKViewDelegate {
     private let commandQueue: MTLCommandQueue

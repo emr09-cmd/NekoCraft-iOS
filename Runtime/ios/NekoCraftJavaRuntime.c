@@ -1,9 +1,12 @@
 #include "NekoCraftJavaRuntime.h"
 
 #include <dlfcn.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <string.h>
+#include <sys/wait.h>
 
 typedef int jint;
 typedef struct JavaVM JavaVM;
@@ -27,7 +30,10 @@ struct NekoCraftJavaRuntime {
     char *runtimeHome;
     void *jvmLibrary;
     JavaVM *jvm;
+    pid_t processID;
 };
+
+extern char **environ;
 
 NekoCraftJavaRuntime *NekoCraftJavaRuntimeCreate(const char *runtimeHome) {
     if (runtimeHome == NULL) {
@@ -54,17 +60,59 @@ int NekoCraftJavaRuntimeStart(NekoCraftJavaRuntime *runtime, int argc, const cha
     return NekoCraftJavaRuntimeLaunch(runtime, "net.minecraft.client.main.Main", NULL, argc, argv);
 }
 
+int NekoCraftJavaRuntimeLaunchMinecraft(NekoCraftJavaRuntime *runtime, const char *classPath, const char *username, const char *version, const char *gameDirectory, const char *assetsDirectory, const char *assetIndex) {
+    const char *arguments[] = {
+        "--username", username,
+        "--version", version,
+        "--gameDir", gameDirectory,
+        "--assetsDir", assetsDirectory,
+        "--assetIndex", assetIndex,
+        "--uuid", "00000000-0000-0000-0000-000000000000",
+        "--accessToken", "0",
+        "--userType", "legacy",
+        "--versionType", "release"
+    };
+    return NekoCraftJavaRuntimeLaunch(runtime, "net.minecraft.client.main.Main", classPath, (int)(sizeof(arguments) / sizeof(arguments[0])), arguments);
+}
+
 int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainClass, const char *classPath, int argc, const char *argv[]) {
-    (void)mainClass;
-    (void)argc;
-    (void)argv;
-    if (runtime == NULL || runtime->runtimeHome == NULL) {
+    if (runtime == NULL || runtime->runtimeHome == NULL || mainClass == NULL || classPath == NULL) {
         return -1;
     }
-    if (runtime->jvm != NULL) {
+    if (runtime->processID > 0) {
         return 0;
     }
 
+    size_t javaPathLength = strlen(runtime->runtimeHome) + strlen("/bin/java") + 1;
+    char *javaPath = malloc(javaPathLength);
+    if (javaPath == NULL) return -1;
+    snprintf(javaPath, javaPathLength, "%s/bin/java", runtime->runtimeHome);
+
+    size_t argumentCount = (size_t)argc + 4;
+    char **arguments = calloc(argumentCount, sizeof(char *));
+    if (arguments == NULL) {
+        free(javaPath);
+        return -1;
+    }
+    size_t index = 0;
+    arguments[index++] = javaPath;
+    arguments[index++] = "-cp";
+    arguments[index++] = (char *)classPath;
+    arguments[index++] = (char *)mainClass;
+    for (int argumentIndex = 0; argumentIndex < argc; argumentIndex++) {
+        arguments[index++] = (char *)argv[argumentIndex];
+    }
+    arguments[index] = NULL;
+
+    int result = posix_spawn(&runtime->processID, javaPath, NULL, NULL, arguments, environ);
+    free(arguments);
+    free(javaPath);
+    if (result != 0) {
+        runtime->processID = 0;
+        return -1;
+    }
+    return 0;
+#if 0
     size_t pathLength = strlen(runtime->runtimeHome) + strlen("/lib/server/libjvm.dylib") + 1;
     char *jvmPath = malloc(pathLength);
     if (jvmPath == NULL) {
@@ -105,10 +153,15 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
     }
 
     return 0;
+#endif
 }
 
 void NekoCraftJavaRuntimeStop(NekoCraftJavaRuntime *runtime) {
-    (void)runtime;
+    if (runtime != NULL && runtime->processID > 0) {
+        kill(runtime->processID, SIGTERM);
+        waitpid(runtime->processID, NULL, 0);
+        runtime->processID = 0;
+    }
 }
 
 void NekoCraftJavaRuntimeDestroy(NekoCraftJavaRuntime *runtime) {
