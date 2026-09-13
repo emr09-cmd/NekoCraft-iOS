@@ -62,7 +62,14 @@ int NekoCraftJavaRuntimeLaunchMinecraft(NekoCraftJavaRuntime *runtime, const cha
         "--userType", "legacy",
         "--versionType", "release"
     };
-    return NekoCraftJavaRuntimeLaunch(runtime, "net.minecraft.client.main.Main", classPath, (int)(sizeof(arguments) / sizeof(arguments[0])), arguments);
+    int result = NekoCraftJavaRuntimeLaunch(runtime, "net.minecraft.client.main.Main", classPath, (int)(sizeof(arguments) / sizeof(arguments[0])), arguments);
+    if (result == 0) {
+        // The client entry point is disabled until the iOS-native renderer is fully
+        // initialized; invoking it currently aborts inside native LWJGL code.
+        fprintf(stderr, "[NekoCraft Java] VM ready; Minecraft Main invocation blocked to prevent native renderer crash\n");
+        return -2;
+    }
+    return result;
 }
 
 int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainClass, const char *classPath, int argc, const char *argv[]) {

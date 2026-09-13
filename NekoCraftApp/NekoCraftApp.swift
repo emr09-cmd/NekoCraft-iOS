@@ -252,7 +252,7 @@ final class LauncherViewModel: ObservableObject {
                     self.message = "Minecraft launch returned. Check the console for Java output."
                 } else {
                     self.log("Java VM failed: code \(result), \(detail ?? "unknown error")")
-                    self.message = "Minecraft launch failed (code \(result)): \(detail ?? "unknown error")"
+                    self.message = result == -2 ? "Java 21 VM started, but Minecraft launch was blocked because the native renderer is not stable yet." : "Minecraft launch failed (code \(result)): \(detail ?? "unknown error")"
                 }
             }
         }
