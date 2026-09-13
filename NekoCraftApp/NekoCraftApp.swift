@@ -223,14 +223,13 @@ final class LauncherViewModel: ObservableObject {
         let gameDirectory = clientStore.gameDirectory.path
         let assetsDirectory = clientStore.assetsDirectory.path
         isLaunching = true
-        log("Starting Java 21 and Minecraft on background thread")
+        log("Starting Java 21 and Minecraft on iOS main thread with OpenGL renderer")
         let launchUsername = username
         let launchVersion = version
         let launchGameDirectory = gameDirectory
         let launchAssetsDirectory = assetsDirectory
         let launchAssetIndex = assetIndex
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let result = classPath.withCString { classPathPointer in
+        let result = classPath.withCString { classPathPointer in
                 launchUsername.withCString { usernamePointer in
                     launchVersion.withCString { versionPointer in
                         launchGameDirectory.withCString { gameDirectoryPointer in
@@ -243,18 +242,17 @@ final class LauncherViewModel: ObservableObject {
                     }
                 }
             }
-            let detail = result == 0 ? nil : (NekoCraftJavaRuntimeLastError(javaRuntime).map { String(cString: $0) } ?? "unknown error")
-            await MainActor.run {
-                guard let self else { return }
-                self.isLaunching = false
-                if result == 0 {
-                    self.log("Java 21 VM started and Minecraft Main.main returned")
-                    self.message = "Minecraft launch returned. Check the console for Java output."
-                } else {
-                    self.log("Java VM failed: code \(result), \(detail ?? "unknown error")")
-                    self.message = result == -2 ? "Java 21 VM started, but Minecraft launch was blocked because the native renderer is not stable yet." : "Minecraft launch failed (code \(result)): \(detail ?? "unknown error")"
-                }
-            }
+        isLaunching = false
+        let detail = result == 0 ? nil : (NekoCraftJavaRuntimeLastError(javaRuntime).map { String(cString: $0) } ?? "unknown error")
+        if result == 0 {
+            log("Java 21 VM started and Minecraft Main.main returned")
+            message = "Minecraft launch returned. Check the console for Java output."
+        } else if result == -2 {
+            log("Minecraft launch blocked before JNI renderer startup")
+            message = "Java VM is available. Minecraft launch is disabled because the current iOS renderer is unstable."
+        } else {
+            log("Java VM failed: code \(result), \(detail ?? "unknown error")")
+            message = "Minecraft launch failed (code \(result)): \(detail ?? "unknown error")"
         }
     }
 

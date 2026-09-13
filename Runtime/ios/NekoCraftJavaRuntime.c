@@ -62,15 +62,7 @@ int NekoCraftJavaRuntimeLaunchMinecraft(NekoCraftJavaRuntime *runtime, const cha
         "--userType", "legacy",
         "--versionType", "release"
     };
-    (void)arguments;
-    (void)classPath;
-    (void)username;
-    (void)version;
-    (void)gameDirectory;
-    (void)assetsDirectory;
-    (void)assetIndex;
-    fprintf(stderr, "[NekoCraft Java] Minecraft Main invocation disabled before JNI class loading; renderer is unstable\n");
-    return -2;
+    return NekoCraftJavaRuntimeLaunch(runtime, "net.minecraft.client.main.Main", classPath, (int)(sizeof(arguments) / sizeof(arguments[0])), arguments);
 }
 
 int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainClass, const char *classPath, int argc, const char *argv[]) {
@@ -94,19 +86,27 @@ int NekoCraftJavaRuntimeLaunch(NekoCraftJavaRuntime *runtime, const char *mainCl
         snprintf(homeOption, sizeof(homeOption), "-Djava.home=%s", runtime->runtimeHome);
         char classPathOption[4096];
         snprintf(classPathOption, sizeof(classPathOption), "-Djava.class.path=%s", classPath);
-        JavaVMOption options[2] = {{ homeOption, NULL }, { classPathOption, NULL }};
-        JavaVMInitArgs initArgs = { 0x00010008, 2, options, 1 };
+        char libraryPathOption[4096];
+        snprintf(libraryPathOption, sizeof(libraryPathOption), "-Djava.library.path=%s/../Frameworks", runtime->runtimeHome);
+        JavaVMOption options[10] = {
+            { homeOption, NULL },
+            { classPathOption, NULL },
+            { "-XstartOnFirstThread", NULL },
+            { libraryPathOption, NULL },
+            { "-Dorg.lwjgl.glfw.checkThread0=false", NULL },
+            { "-Dorg.lwjgl.system.allocator=system", NULL },
+            { "-Dorg.lwjgl.opengl.libname=libgl4es_114.dylib", NULL },
+            { "-Djava.awt.headless=false", NULL },
+            { "-Dawt.toolkit=net.java.openjdk.cacio.ctc.CTCToolkit", NULL },
+            { "-Djava.awt.graphicsenv=net.java.openjdk.cacio.ctc.CTCGraphicsEnvironment", NULL }
+        };
+        JavaVMInitArgs initArgs = { 0x00010008, 10, options, 1 };
         fprintf(stderr, "[NekoCraft Java] java --version: OpenJDK 21.0.8 (embedded iOS ARM64 runtime)\n");
         fprintf(stderr, "[NekoCraft Java] creating VM with classpath length %lu\n", (unsigned long)strlen(classPath));
         if (createVM(&runtime->jvm, &environment, &initArgs) != 0) return runtimeError(runtime, "JNI_CreateJavaVM failed; inspect JIT and signing logs");
         runtime->environment = environment;
         fprintf(stderr, "[NekoCraft Java] VM started successfully\n");
     }
-
-    // Keep VM startup safe. Minecraft Main/LWJGL execution is intentionally
-    // not entered until the native renderer is replaced with a stable bridge.
-    fprintf(stderr, "[NekoCraft Java] VM ready; skipping Minecraft Main invocation\n");
-    return 0;
 
     // JNIEnv is thread-local; attach every Swift launch task before JNI calls.
     if ((*runtime->jvm)->AttachCurrentThread(runtime->jvm, &environment, NULL) != 0 || environment == NULL) {
