@@ -43,7 +43,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ ! -f \"${SRCROOT}/Runtime/src/depends/java-21-openjdk/lib/server/libjvm.dylib\" ]; then echo \"Missing ARM64 Java 21 runtime. Run make -C Runtime ios-jre21 first.\" >&2; exit 1; fi\n${SRCROOT}/Runtime/ios/package-runtime.sh \"${SRCROOT}/Runtime/src/depends/java-21-openjdk\" \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" \"${CODE_SIGN_IDENTITY}\"";
+			shellScript = "if [ ! -f \"${SRCROOT}/Runtime/src/depends/java-21-openjdk/lib/server/libjvm.dylib\" ]; then echo \"Missing ARM64 Java 21 runtime. Run make -C Runtime ios-jre21 first.\" >&2; exit 1; fi\n/bin/sh \"${SRCROOT}/Runtime/ios/package-runtime.sh\" \"${SRCROOT}/Runtime/src/depends/java-21-openjdk\" \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" \"${CODE_SIGN_IDENTITY}\"";
 		};
 /* End PBXFrameworksBuildPhase section */
 
