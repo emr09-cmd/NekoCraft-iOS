@@ -331,7 +331,7 @@ private final class ClientStore {
         fileManager.fileExists(atPath: clientURL(version: version).path)
     }
 
-    func download(_ artifact: Artifact, version: String) async throws {
+    func download(_ artifact: ClientArtifact, version: String) async throws {
         guard let url = URL(string: artifact.url) else {
             throw LauncherError.networkFailure
         }
@@ -366,7 +366,11 @@ private struct VersionManifest: Decodable {
 }
 
 private struct VersionDownloads: Decodable {
-    let client: Artifact
+    let client: ClientArtifact
+}
+
+private struct ClientArtifact: Decodable {
+    let url: String
 }
 
 private struct AssetIndex: Decodable {
